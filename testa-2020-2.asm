@@ -540,7 +540,7 @@ reset:
                                     ; $2000-$FFFF RAM   CA1 -> $2n
                                     ; $0000-$1FFF Flash BANK -> $n0
 
-            LD      A,$20           ; Set New Common 1 / Bank Areas for RAM
+            LD      A,$C8           ; Set New Common 1 / Bank Areas for RAM
             OUT0    (CBAR),A
 
             LD      A,$10           ; Set Common 1 Base Physical $12000 -> $10

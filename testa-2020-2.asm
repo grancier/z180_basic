@@ -446,33 +446,64 @@ DEFC    APUCMDBuf       =   ASCI1TxBuf+ASCI1_TX_BUFSIZE
 DEFC    APUPTRBuf       =   APUCMDBuf+APU_CMD_BUFSIZE
 
 ;==============================================================================
+ORG     0000h     		; z180 reset vector loc
+		jp		reset			; transfer to the program start
+
+		ORG		0038h			; z180 INT0 vector loc (mode 1)
+		jp		reset			; use this for now
+
+		ORG		0066h			; z180 NMI vector loc
+		jp		reset			; use this for now
+
+
+
+		ORG		0080h			; reset vector table (see reset below)
+		DW		reset			; INT1
+		DW		reset			; INT2
+		DW		reset			; PRT0
+		DW		reset			; PRT1
+		DW		reset			; DMA0
+		DW		reset			; DMA1
+		DW		reset			; CSI/O
+		DW		reset			; ASCI 0
+		DW		reset			; ASCI 1
+
+
+
+		ORG		0100h			; start of program
+reset:
+		di						; no interrupts
+		ld		a,80h			; set up vector table (see above)
+		out0	(IL),a
+		xor		a				; get a 0
+		out0	(RCR),a			; shut off refresh
+		out0	(ICR),a			; set up I/O control
+		out0	(DSTAT),a		; shut off DMA
+		out0	(CNTR),a		; shut off CSI/O
+;		out0	(OMCR),a		; set operation mode
+
+		ld		a,98h			; BA = 8000h to 8fffh, CA1 = 9000h to 0ffffh
+		out0	(CBAR),a		; set up MMU reg
+		ld		a,38h			; logical 8000h + 38000h gives physical 40000h
+		out0	(BBR),a			; RAM disk area = 40000h to 78fffh
+		ld		a,70h			; logical 9000h + 70000h gives physical 79000h
+		out0	(CBR),a			; user RAM area = 79000h to 7ffffh
+
+		ld		a,7ch			; rcrv & xmtr on, clear errors, 8N1, RTS high
+		out0	(CNTLA0),a		; do it
+		ld		a,21h			; set dividers for 9600 baud (phi = 9.216 MHz)
+		out0	(CNTLB0),a		; do it
+
+		ld		a,03h			; set CSIO baud rate to /160
+		out0	(CNTR),a		; do it
 
 ;======MAIN======
 
             DI                      ; Disable interrupts
-            PUSH    AF
-                                    ; Set I/O Control Reg (ICR)
-            LD      A,Z180_IO_BASE  ; ICR = $00 [xx00 0000] for I/O Registers at $00 - $3F
-            OUT0    (ICR),A         ; Standard I/O Mapping (0 Enabled)
-
-            IN0     A,(ITC)         ; Check whether TRAP is set, or normal RESET
-            AND     ITC_TRAP
-            JR      NZ, Z180_TRAP_HANDLER ; Handle the TRAP event
-
-            POP     AF
-
-Z180_TRAP_HANDLER:
-            XOR     ITC_TRAP        ; Clear TRAP bit, It must be set to get here.
-            OUT0    (ITC),A 
-            POP     AF
-            LD      A,Z180_VECTOR_BASE/$100
-            LD      I,A             ; Set interrupt vector address high byte (I)
-
-                                    ; IL = $40 [010x xxxx] for Vectors at $nn40 - $nn5F
             LD      A,Z180_VECTOR_BASE%$100
             OUT0    (IL),A          ; Set interrupt vector address low byte (IL)
 
-            IM      1               ; Interrupt mode 1 for INT0
+ ;           IM      1               ; Interrupt mode 1 for INT0
 
             XOR     A               ; Zero Accumulator
 
@@ -561,6 +592,15 @@ Z180_TRAP_HANDLER:
             LD      (ASCI0TxBufUsed),A
 
             EI                      ; enable interrupts
+
+;reset1
+;	in0		a,(STAT0)			; get status of ASC0
+;	and		2h					; test TDRE
+;	jr		z,reset1			; loop until TDRE=1
+;	ld		a,'A'				; move byte into A
+;	out0	(TDR0),a			; send byte to ASC0
+;	jp		reset1				; do forever
+
 ASCI0_INTERRUPT:
         push af
         push hl

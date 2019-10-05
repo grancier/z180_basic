@@ -22,7 +22,6 @@
 *.exe
 *.out
 *.app
-*.bin
 
 # Intel Hex Executables
 *.ihx

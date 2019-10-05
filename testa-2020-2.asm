@@ -465,8 +465,6 @@ Z180_TRAP_HANDLER:
             XOR     ITC_TRAP        ; Clear TRAP bit, It must be set to get here.
             OUT0    (ITC),A 
             POP     AF
-            JP      REINIT       ; Jump to proper TRAP handling
-REINIT:
             LD      A,Z180_VECTOR_BASE/$100
             LD      I,A             ; Set interrupt vector address high byte (I)
 
@@ -480,8 +478,6 @@ REINIT:
 
                                     ; Clear Refresh Control Reg (RCR)
             OUT0    (RCR),A         ; DRAM Refresh Enable (0 Disabled)
-
-            OUT0    (TCR),A         ; Disable PRT downcounting
 
                                     ; Clear INT/TRAP Control Register (ITC)             
             OUT0    (ITC),A         ; Disable all external interrupts.             
@@ -508,30 +504,6 @@ REINIT:
             LD      DE,Z180_VECTOR_BASE
             LD      BC,Z180_VECTOR_SIZE
             LDIR
-
-            JP      Z180_INIT       ; Start normal Configuration
-
-Z180_INIT:
-            XOR     A               ; Zero Accumulator
-
-                                    ; Clear Refresh Control Reg (RCR)
-            OUT0    (RCR),A         ; DRAM Refresh Enable (0 Disabled)
-
-                                    ; Clear INT/TRAP Control Register (ITC)             
-            OUT0    (ITC),A         ; Disable all external interrupts.             
-
-                                    ; Set Operation Mode Control Reg (OMCR)
-            LD      A,OMCR_M1E      ; Enable M1 for single step, disable 64180 I/O _RD Mode
-            OUT0    (OMCR),A        ; X80 Mode (M1 Disabled, IOC Disabled)
-
-                                    ; Set internal clock = crystal x 2 = 36.864MHz
-                                    ; if using ZS8180 or Z80182 at High-Speed
-            LD      A,CMR_X2        ; Set Hi-Speed flag
-            OUT0    (CMR),A         ; CPU Clock Multiplier Reg (CMR)
-
-                                    ; DMA/Wait Control Reg Set I/O Wait States
-            LD      A,DCNTL_IWI0
-            OUT0    (DCNTL),A       ; 0 Memory Wait & 2 I/O Wait
 
                                     ; Set Logical RAM Addresses
                                     ; $2000-$FFFF RAM   CA1 -> $2n
@@ -589,3 +561,182 @@ Z180_INIT:
             LD      (ASCI0TxBufUsed),A
 
             EI                      ; enable interrupts
+ASCI0_INTERRUPT:
+        push af
+        push hl
+                                    ; start doing the Rx stuff
+        in0 a, (STAT0)              ; load the ASCI0 status register
+        tst ASCI_RDRF               ; test whether we have received on ASCI0
+        jr z, ASCI0_TX_CHECK        ; if not, go check for bytes to transmit
+
+ASCI0_RX_GET:
+        in0 l, (RDR0)               ; move Rx byte from the ASCI0 RDR to l
+        
+        and ASCI_OVRN|ASCI_PE|ASCI_FE   ; test whether we have error on ASCI0
+        jr nz, ASCI0_RX_ERROR       ; drop this byte, clear error, and get the next byte
+
+        ld a, (ASCI0RxBufUsed)      ; get the number of bytes in the Rx buffer      
+        cp ASCI0_RX_BUFSIZE-1       ; check whether there is space in the buffer
+        jr nc, ASCI0_RX_CHECK       ; buffer full, check whether we need to drain H/W FIFO
+
+        ld a, l                     ; get Rx byte from l
+        ld hl, (ASCI0RxInPtr)       ; get the pointer to where we poke
+        ld (hl), a                  ; write the Rx byte to the ASCI0RxInPtr target
+
+        inc l                       ; move the Rx pointer low byte along, 0xFF rollover
+        ld (ASCI0RxInPtr), hl       ; write where the next byte should be poked
+
+        ld hl, ASCI0RxBufUsed
+        inc (hl)                    ; atomically increment Rx buffer count
+        jr ASCI0_RX_CHECK           ; check for additional bytes
+
+ASCI0_RX_ERROR:
+        in0 a, (CNTLA0)             ; get the CNTRLA0 register
+        and ~ASCI_EFR               ; to clear the error flag, EFR, to 0 
+        out0 (CNTLA0), a            ; and write it back
+
+ASCI0_RX_CHECK:                     ; Z8S180 has 4 byte Rx H/W FIFO
+        in0 a, (STAT0)              ; load the ASCI0 status register
+        tst ASCI_RDRF               ; test whether we have received on ASCI0
+        jr nz, ASCI0_RX_GET         ; if still more bytes in H/W FIFO, get them
+
+ASCI0_TX_CHECK:                     ; now start doing the Tx stuff
+        and ASCI_TDRE               ; test whether we can transmit on ASCI0
+        jr z, INTERRUPT_EXIT        ; if not, then end
+
+        ld a, (ASCI0TxBufUsed)      ; get the number of bytes in the Tx buffer
+        or a                        ; check whether it is zero
+        jr z, ASCI0_TX_TIE0_CLEAR   ; if the count is zero, then disable the Tx Interrupt
+
+        ld hl, (ASCI0TxOutPtr)      ; get the pointer to place where we pop the Tx byte
+        ld a, (hl)                  ; get the Tx byte
+        out0 (TDR0), a              ; output the Tx byte to the ASCI0
+
+        inc l                       ; move the Tx pointer low byte along, 0xFF rollover
+        ld (ASCI0TxOutPtr), hl      ; write where the next byte should be popped
+
+        ld hl, ASCI0TxBufUsed
+        dec (hl)                    ; atomically decrement current Tx count
+
+        jr nz, INTERRUPT_EXIT       ; if we've more Tx bytes to send, we're done for now
+
+ASCI0_TX_TIE0_CLEAR:
+        in0 a, (STAT0)              ; get the ASCI0 status register
+        and ~ASCI_TIE               ; mask out (disable) the Tx Interrupt
+        out0 (STAT0), a             ; set the ASCI0 status register
+
+INTERRUPT_EXIT:
+        pop hl
+        pop af
+        ei
+        ret
+
+PRT0_INTERRUPT:
+        push af
+        push hl
+
+        in0 a, (TCR)                ; to clear the PRT0 interrupt, read the TCR
+        in0 a, (TMDR0H)             ; followed by the TMDR0
+
+        ld hl, sysTimeFraction
+        inc (hl)
+        jr NZ, INTERRUPT_EXIT       ; at 0 we're at 1 second count, interrupted 256 times
+
+;       ld hl, sysTime              ; inc hl works, provided the storage is contiguous
+        inc hl
+        inc (hl)
+        jr NZ, INTERRUPT_EXIT
+        inc hl
+        inc (hl)
+        jr NZ, INTERRUPT_EXIT
+        inc hl
+        inc (hl)
+        jr NZ, INTERRUPT_EXIT
+        inc hl
+        inc (hl)
+        jr INTERRUPT_EXIT
+        
+RX0_CHK:
+        LD      A,(ASCI0RxBufUsed)
+        CP      $0
+        RET
+
+;------------------------------------------------------------------------------
+RX0:
+        ld a, (ASCI0RxBufUsed)      ; get the number of bytes in the Rx buffer
+        or a                        ; see if there are zero bytes available
+        jr z, RX0                   ; wait, if there are no bytes available
+
+        push hl                     ; Store HL so we don't clobber it
+
+        ld hl, (ASCI0RxOutPtr)      ; get the pointer to place where we pop the Rx byte
+        ld a, (hl)                  ; get the Rx byte
+
+        inc l                       ; move the Rx pointer low byte along, 0xFF rollover
+        ld (ASCI0RxOutPtr), hl      ; write where the next byte should be popped
+
+        ld hl, ASCI0RxBufUsed
+        dec (hl)                    ; atomically decrement Rx count
+
+        pop hl                      ; recover HL
+        ret                         ; char ready in A
+
+;------------------------------------------------------------------------------
+TX0:
+        push hl                     ; store HL so we don't clobber it        
+        ld l, a                     ; store Tx character 
+
+        ld a, (ASCI0TxBufUsed)      ; get the number of bytes in the Tx buffer
+        or a                        ; check whether the buffer is empty
+        jr nz, TX0_BUFFER_OUT       ; buffer not empty, so abandon immediate Tx
+
+        in0 a, (STAT0)              ; get the ASCI0 status register
+        and ASCI_TDRE                ; test whether we can transmit on ASCI0
+        jr z, TX0_BUFFER_OUT        ; if not, so abandon immediate Tx
+
+        ld a, l                     ; Retrieve Tx character for immediate Tx
+        out0 (TDR0), a              ; output the Tx byte to the ASCI0
+
+        pop hl                      ; recover HL
+        ret                         ; and just complete
+
+TX0_BUFFER_OUT:
+        ld a, (ASCI0TxBufUsed)      ; Get the number of bytes in the Tx buffer
+        cp ASCI0_TX_BUFSIZE-1       ; check whether there is space in the buffer
+        jr nc, TX0_BUFFER_OUT       ; buffer full, so wait for free buffer for Tx
+
+        ld a, l                     ; retrieve Tx character
+
+        ld hl, ASCI0TxBufUsed
+        di
+        inc (hl)                    ; atomic increment of Tx count
+        ld hl, (ASCI0TxInPtr)       ; get the pointer to where we poke
+        ei
+        ld (hl), a                  ; write the Tx byte to the ASCI0TxInPtr   
+
+        inc l                       ; move the Tx pointer low byte along, 0xFF rollover
+        ld (ASCI0TxInPtr), hl       ; write where the next byte should be poked
+
+        pop hl                      ; recover HL
+
+        in0 a, (STAT0)              ; load the ASCI0 status register
+        and ASCI_TIE                ; test whether ASCI0 interrupt is set
+        ret nz                      ; if so then just return
+
+        di                          ; critical section begin
+        in0 a, (STAT0)              ; get the ASCI status register again
+        or ASCI_TIE                 ; mask in (enable) the Tx Interrupt
+        out0 (STAT0), a             ; set the ASCI status register
+        ei                          ; critical section end
+        ret
+
+;------------------------------------------------------------------------------
+TX0_PRINT:
+        LD      A,(HL)              ; Get a byte
+        OR      A                   ; Is it $00 ?
+        RET     Z                   ; Then RETurn on terminator
+        CALL    TX0                 ; Print it
+        INC     HL                  ; Next byte
+        JR      TX0_PRINT           ; Continue until $00
+
+;------------------------------------------------------------------------------

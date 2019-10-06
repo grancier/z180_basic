@@ -222,6 +222,104 @@ DEFC    ASCI_7P1        =       $02     ; 7 Bits    Parity 1 Stop Bit
 DEFC    ASCI_7N2        =       $01     ; 7 Bits No Parity 2 Stop Bits
 DEFC    ASCI_7N1        =       $00     ; 7 Bits No Parity 1 Stop Bit
 
+; I/O REGISTER BIT FIELDS
+
+defc CNTLA0_MPE         = 0x80
+defc CNTLA0_RE          = 0x40
+defc CNTLA0_TE          = 0x20
+defc CNTLA0_RTS0        = 0x10
+defc CNTLA0_MPBR        = 0x08
+defc CNTLA0_EFR         = 0x08
+defc CNTLA0_MODE_MASK   = 0x07
+defc CNTLA0_MODE_8P2    = 0x07
+defc CNTLA0_MODE_8P1    = 0x06
+defc CNTLA0_MODE_8N2    = 0x05
+defc CNTLA0_MODE_8N1    = 0x04
+defc CNTLA0_MODE_7P2    = 0x03
+defc CNTLA0_MODE_7P1    = 0x02
+defc CNTLA0_MODE_7N2    = 0x01
+defc CNTLA0_MODE_7N1    = 0x00
+
+defc CNTLA1_MPE         = 0x80
+defc CNTLA1_RE          = 0x40
+defc CNTLA1_TE          = 0x20
+defc CNTLA1_CKA1D       = 0x10
+defc CNTLA1_MPBR        = 0x08
+defc CNTLA1_EFR         = 0x08
+defc CNTLA1_MODE_MASK   = 0x07
+defc CNTLA1_MODE_8P2    = 0x07
+defc CNTLA1_MODE_8P1    = 0x06
+defc CNTLA1_MODE_8N2    = 0x05
+defc CNTLA1_MODE_8N1    = 0x04
+defc CNTLA1_MODE_7P2    = 0x03
+defc CNTLA1_MODE_7P1    = 0x02
+defc CNTLA1_MODE_7N2    = 0x01
+defc CNTLA1_MODE_7N1    = 0x00
+
+defc CNTLB0_MPBT = 0x80
+defc CNTLB0_MP = 0x40
+defc CNTLB0_CTS = 0x20
+defc CNTLB0_PS = 0x20
+defc CNTLB0_PEO = 0x10
+defc CNTLB0_DR = 0x08
+defc CNTLB0_SS_MASK = 0x07
+defc CNTLB0_SS_EXT = 0x07
+defc CNTLB0_SS_DIV_64 = 0x06
+defc CNTLB0_SS_DIV_32 = 0x05
+defc CNTLB0_SS_DIV_16 = 0x04
+defc CNTLB0_SS_DIV_8 = 0x03
+defc CNTLB0_SS_DIV_4 = 0x02
+defc CNTLB0_SS_DIV_2 = 0x01
+defc CNTLB0_SS_DIV_1 = 0x00
+
+defc CNTLB1_MPBT = 0x80
+defc CNTLB1_MP = 0x40
+defc CNTLB1_CTS = 0x20
+defc CNTLB1_PS = 0x20
+defc CNTLB1_PEO = 0x10
+defc CNTLB1_DR = 0x08
+defc CNTLB1_SS_MASK = 0x07
+defc CNTLB1_SS_EXT = 0x07
+defc CNTLB1_SS_DIV_64 = 0x06
+defc CNTLB1_SS_DIV_32 = 0x05
+defc CNTLB1_SS_DIV_16 = 0x04
+defc CNTLB1_SS_DIV_8 = 0x03
+defc CNTLB1_SS_DIV_4 = 0x02
+defc CNTLB1_SS_DIV_2 = 0x01
+defc CNTLB1_SS_DIV_1 = 0x00
+
+defc STAT0_RDRF = 0x80
+defc STAT0_OVRN = 0x40
+defc STAT0_PE = 0x20
+defc STAT0_FE = 0x10
+defc STAT0_RIE = 0x08
+defc STAT0_DCD0 = 0x04
+defc STAT0_TDRE = 0x02
+defc STAT0_TIE = 0x01
+
+defc STAT1_RDRF = 0x80
+defc STAT1_OVRN = 0x40
+defc STAT1_PE = 0x20
+defc STAT1_FE = 0x10
+defc STAT1_RIE = 0x08
+defc STAT1_CTS1E = 0x04
+defc STAT1_TDRE = 0x02
+defc STAT1_TIE = 0x01
+
+defc CNTR_EF = 0x80
+defc CNTR_EIE = 0x40
+defc CNTR_RE = 0x20
+defc CNTR_TE = 0x10
+defc CNTR_SS_MASK = 0x07
+defc CNTR_SS_EXT = 0x07
+defc CNTR_SS_DIV_1280 = 0x06
+defc CNTR_SS_DIV_640 = 0x05
+defc CNTR_SS_DIV_320 = 0x04
+defc CNTR_SS_DIV_160 = 0x03
+defc CNTR_SS_DIV_80 = 0x02
+defc CNTR_SS_DIV_40 = 0x01
+defc CNTR_SS_DIV_20 = 0x00
+
 ;   ASCI Control Reg B (CNTLBn)
                                         ; BAUD Rate = PHI / PS / SS / DR
 
@@ -265,6 +363,7 @@ DEFC    TCR_TDE0       =        $01
 
 ;   CPU Clock Multiplier Reg (CMR) (Z8S180 & higher Only)
 
+DEFC    CMR_X1          =       $00
 DEFC    CMR_X2          =       $80     ; CPU x2 XTAL Multiplier Mode
 DEFC    CMR_LN_XTAL     =       $40     ; Low Noise Crystal 
 
@@ -445,58 +544,49 @@ DEFC    ASCI1TxBuf      =   ASCI1RxBuf+ASCI1_RX_BUFSIZE
 DEFC    APUCMDBuf       =   ASCI1TxBuf+ASCI1_TX_BUFSIZE
 DEFC    APUPTRBuf       =   APUCMDBuf+APU_CMD_BUFSIZE
 
-;==============================================================================
-ORG     0000h     		; z180 reset vector loc
-		jp		reset			; transfer to the program start
+;------------------------------------------------------------------------------
+; RST 00 - RESET / TRAP
+                DEFS    0x0000 - ASMPC  ; ORG     0000H                     ; Disable interrupts
+                JP      RESET            ; Initialize Hardware and go
 
-		ORG		0038h			; z180 INT0 vector loc (mode 1)
-		jp		reset			; use this for now
+;------------------------------------------------------------------------------
+; RST 08
+                DEFS    0x0008 - ASMPC  ; ORG     0008H
+                JP      RESET
 
-		ORG		0066h			; z180 NMI vector loc
-		jp		reset			; use this for now
+;------------------------------------------------------------------------------
+; RST 10
+                DEFS    0x0010 - ASMPC  ; ORG     0010H
+                JP      RESET
 
+;------------------------------------------------------------------------------
+; RST 18
+                DEFS    0x0018 - ASMPC  ; ORG     0018H
+                JP      RESET
 
+;------------------------------------------------------------------------------
+; RST 20
+                DEFS    0x0020 - ASMPC  ; ORG     0020H
+                JP      RESET
 
-		ORG		0080h			; reset vector table (see reset below)
-		DW		reset			; INT1
-		DW		reset			; INT2
-		DW		reset			; PRT0
-		DW		reset			; PRT1
-		DW		reset			; DMA0
-		DW		reset			; DMA1
-		DW		reset			; CSI/O
-		DW		reset			; ASCI 0
-		DW		reset			; ASCI 1
+;------------------------------------------------------------------------------
+; RST 28
+                DEFS    0x0028 - ASMPC  ; ORG     0028H
+                JP      RESET
 
+;------------------------------------------------------------------------------
+; RST 30
+                DEFS    0x0030 - ASMPC  ; ORG     0030H
+                JP      RESET
 
+;------------------------------------------------------------------------------
+; RST 38 - INTERRUPT VECTOR INT0 [ with IM 1 ]
+
+                DEFS    0x0038 - ASMPC  ; ORG     0038H
+                JP      RESET
 
 		ORG		0100h			; start of program
-reset:
-		di						; no interrupts
-		ld		a,80h			; set up vector table (see above)
-		out0	(IL),a
-		xor		a				; get a 0
-		out0	(RCR),a			; shut off refresh
-		out0	(ICR),a			; set up I/O control
-		out0	(DSTAT),a		; shut off DMA
-		out0	(CNTR),a		; shut off CSI/O
-;		out0	(OMCR),a		; set operation mode
-
-		ld		a,98h			; BA = 8000h to 8fffh, CA1 = 9000h to 0ffffh
-		out0	(CBAR),a		; set up MMU reg
-		ld		a,38h			; logical 8000h + 38000h gives physical 40000h
-		out0	(BBR),a			; RAM disk area = 40000h to 78fffh
-		ld		a,70h			; logical 9000h + 70000h gives physical 79000h
-		out0	(CBR),a			; user RAM area = 79000h to 7ffffh
-
-		ld		a,7ch			; rcrv & xmtr on, clear errors, 8N1, RTS high
-		out0	(CNTLA0),a		; do it
-		ld		a,21h			; set dividers for 9600 baud (phi = 9.216 MHz)
-		out0	(CNTLB0),a		; do it
-
-		ld		a,03h			; set CSIO baud rate to /160
-		out0	(CNTR),a		; do it
-
+RESET:
 ;======MAIN======
 
             DI                      ; Disable interrupts
@@ -514,12 +604,12 @@ reset:
             OUT0    (ITC),A         ; Disable all external interrupts.             
 
                                     ; Set Operation Mode Control Reg (OMCR)
-            LD      A,OMCR_M1E      ; Enable M1 for single step, disable 64180 I/O _RD Mode
+            LD      A,0         ;OMCR_M1E      ; Enable M1 for single step, disable 64180 I/O _RD Mode
             OUT0    (OMCR),A        ; X80 Mode (M1 Disabled, IOC Disabled)
 
                                     ; Set internal clock = crystal x 2 = 36.864MHz
                                     ; if using ZS8180 or Z80182 at High-Speed
-            LD      A,CMR_X2        ; Set Hi-Speed flag
+            LD      A,CMR_X1        ; Set Hi-Speed flag
             OUT0    (CMR),A         ; CPU Clock Multiplier Reg (CMR)
 
                                     ; DMA/Wait Control Reg Set I/O Wait States
@@ -536,14 +626,15 @@ reset:
             LD      BC,Z180_VECTOR_SIZE
             LDIR
 
-                                    ; Set Logical RAM Addresses
-                                    ; $2000-$FFFF RAM   CA1 -> $2n
-                                    ; $0000-$1FFF Flash BANK -> $n0
+             ; Set Logical RAM Addresses
+                            ; $8000-$FFFF RAM   CA1  -> $8.
+                            ; $0000-$7FFF Flash BANK -> $.0
 
-            LD      A,$C8           ; Set New Common 1 / Bank Areas for RAM
+            LD      A,$80           ; Set New Common 1 / Bank Areas for RAM
             OUT0    (CBAR),A
-
-            LD      A,$10           ; Set Common 1 Base Physical $12000 -> $10
+                                    ; logical 8000h + 43000h gives physical 51000h
+		            	    ; user RAM area = 51000h to 58FFFh
+            LD      A,$43           ; Set Common 1 Base Physical $43000 -> $43
             OUT0    (CBR),A
 
             LD      A,$00           ; Set Bank Base Physical $00000 -> $00
@@ -560,10 +651,11 @@ reset:
             OUT0    (CNTLA0),A      ; output to the ASCI0 control A reg
 
                                     ; PHI / PS / SS / DR = BAUD Rate
-                                    ; PHI = 18.432MHz
-                                    ; BAUD = 115200 = 18432000 / 10 / 1 / 16 
-                                    ; PS 0, SS_DIV_1 0, DR 0           
-            XOR     A               ; BAUD = 115200
+                                    ; PHI = 6.144MHz
+                                    ; BAUD = 115200 = 6144000 / 10 / 1 / 16 
+                                    ; PS 0, SS_DIV_1 0, DR 0  
+
+            XOR     A,CNTLB0_CTS|CNTLB0_SS_DIV_16              ; BAUD = 38400
             OUT0    (CNTLB0),A      ; output to the ASCI0 control B reg
 
             LD      A,ASCI_RIE      ; receive interrupt enabled
@@ -591,192 +683,12 @@ reset:
             LD      (ASCI0RxBufUsed),A
             LD      (ASCI0TxBufUsed),A
 
-            EI                      ; enable interrupts
+            ;EI                      ; enable interrupts
 
-;reset1
-;	in0		a,(STAT0)			; get status of ASC0
-;	and		2h					; test TDRE
-;	jr		z,reset1			; loop until TDRE=1
-;	ld		a,'A'				; move byte into A
-;	out0	(TDR0),a			; send byte to ASC0
-;	jp		reset1				; do forever
-
-ASCI0_INTERRUPT:
-        push af
-        push hl
-                                    ; start doing the Rx stuff
-        in0 a, (STAT0)              ; load the ASCI0 status register
-        tst ASCI_RDRF               ; test whether we have received on ASCI0
-        jr z, ASCI0_TX_CHECK        ; if not, go check for bytes to transmit
-
-ASCI0_RX_GET:
-        in0 l, (RDR0)               ; move Rx byte from the ASCI0 RDR to l
-        
-        and ASCI_OVRN|ASCI_PE|ASCI_FE   ; test whether we have error on ASCI0
-        jr nz, ASCI0_RX_ERROR       ; drop this byte, clear error, and get the next byte
-
-        ld a, (ASCI0RxBufUsed)      ; get the number of bytes in the Rx buffer      
-        cp ASCI0_RX_BUFSIZE-1       ; check whether there is space in the buffer
-        jr nc, ASCI0_RX_CHECK       ; buffer full, check whether we need to drain H/W FIFO
-
-        ld a, l                     ; get Rx byte from l
-        ld hl, (ASCI0RxInPtr)       ; get the pointer to where we poke
-        ld (hl), a                  ; write the Rx byte to the ASCI0RxInPtr target
-
-        inc l                       ; move the Rx pointer low byte along, 0xFF rollover
-        ld (ASCI0RxInPtr), hl       ; write where the next byte should be poked
-
-        ld hl, ASCI0RxBufUsed
-        inc (hl)                    ; atomically increment Rx buffer count
-        jr ASCI0_RX_CHECK           ; check for additional bytes
-
-ASCI0_RX_ERROR:
-        in0 a, (CNTLA0)             ; get the CNTRLA0 register
-        and ~ASCI_EFR               ; to clear the error flag, EFR, to 0 
-        out0 (CNTLA0), a            ; and write it back
-
-ASCI0_RX_CHECK:                     ; Z8S180 has 4 byte Rx H/W FIFO
-        in0 a, (STAT0)              ; load the ASCI0 status register
-        tst ASCI_RDRF               ; test whether we have received on ASCI0
-        jr nz, ASCI0_RX_GET         ; if still more bytes in H/W FIFO, get them
-
-ASCI0_TX_CHECK:                     ; now start doing the Tx stuff
-        and ASCI_TDRE               ; test whether we can transmit on ASCI0
-        jr z, INTERRUPT_EXIT        ; if not, then end
-
-        ld a, (ASCI0TxBufUsed)      ; get the number of bytes in the Tx buffer
-        or a                        ; check whether it is zero
-        jr z, ASCI0_TX_TIE0_CLEAR   ; if the count is zero, then disable the Tx Interrupt
-
-        ld hl, (ASCI0TxOutPtr)      ; get the pointer to place where we pop the Tx byte
-        ld a, (hl)                  ; get the Tx byte
-        out0 (TDR0), a              ; output the Tx byte to the ASCI0
-
-        inc l                       ; move the Tx pointer low byte along, 0xFF rollover
-        ld (ASCI0TxOutPtr), hl      ; write where the next byte should be popped
-
-        ld hl, ASCI0TxBufUsed
-        dec (hl)                    ; atomically decrement current Tx count
-
-        jr nz, INTERRUPT_EXIT       ; if we've more Tx bytes to send, we're done for now
-
-ASCI0_TX_TIE0_CLEAR:
-        in0 a, (STAT0)              ; get the ASCI0 status register
-        and ~ASCI_TIE               ; mask out (disable) the Tx Interrupt
-        out0 (STAT0), a             ; set the ASCI0 status register
-
-INTERRUPT_EXIT:
-        pop hl
-        pop af
-        ei
-        ret
-
-PRT0_INTERRUPT:
-        push af
-        push hl
-
-        in0 a, (TCR)                ; to clear the PRT0 interrupt, read the TCR
-        in0 a, (TMDR0H)             ; followed by the TMDR0
-
-        ld hl, sysTimeFraction
-        inc (hl)
-        jr NZ, INTERRUPT_EXIT       ; at 0 we're at 1 second count, interrupted 256 times
-
-;       ld hl, sysTime              ; inc hl works, provided the storage is contiguous
-        inc hl
-        inc (hl)
-        jr NZ, INTERRUPT_EXIT
-        inc hl
-        inc (hl)
-        jr NZ, INTERRUPT_EXIT
-        inc hl
-        inc (hl)
-        jr NZ, INTERRUPT_EXIT
-        inc hl
-        inc (hl)
-        jr INTERRUPT_EXIT
-        
-RX0_CHK:
-        LD      A,(ASCI0RxBufUsed)
-        CP      $0
-        RET
-
-;------------------------------------------------------------------------------
-RX0:
-        ld a, (ASCI0RxBufUsed)      ; get the number of bytes in the Rx buffer
-        or a                        ; see if there are zero bytes available
-        jr z, RX0                   ; wait, if there are no bytes available
-
-        push hl                     ; Store HL so we don't clobber it
-
-        ld hl, (ASCI0RxOutPtr)      ; get the pointer to place where we pop the Rx byte
-        ld a, (hl)                  ; get the Rx byte
-
-        inc l                       ; move the Rx pointer low byte along, 0xFF rollover
-        ld (ASCI0RxOutPtr), hl      ; write where the next byte should be popped
-
-        ld hl, ASCI0RxBufUsed
-        dec (hl)                    ; atomically decrement Rx count
-
-        pop hl                      ; recover HL
-        ret                         ; char ready in A
-
-;------------------------------------------------------------------------------
-TX0:
-        push hl                     ; store HL so we don't clobber it        
-        ld l, a                     ; store Tx character 
-
-        ld a, (ASCI0TxBufUsed)      ; get the number of bytes in the Tx buffer
-        or a                        ; check whether the buffer is empty
-        jr nz, TX0_BUFFER_OUT       ; buffer not empty, so abandon immediate Tx
-
-        in0 a, (STAT0)              ; get the ASCI0 status register
-        and ASCI_TDRE                ; test whether we can transmit on ASCI0
-        jr z, TX0_BUFFER_OUT        ; if not, so abandon immediate Tx
-
-        ld a, l                     ; Retrieve Tx character for immediate Tx
-        out0 (TDR0), a              ; output the Tx byte to the ASCI0
-
-        pop hl                      ; recover HL
-        ret                         ; and just complete
-
-TX0_BUFFER_OUT:
-        ld a, (ASCI0TxBufUsed)      ; Get the number of bytes in the Tx buffer
-        cp ASCI0_TX_BUFSIZE-1       ; check whether there is space in the buffer
-        jr nc, TX0_BUFFER_OUT       ; buffer full, so wait for free buffer for Tx
-
-        ld a, l                     ; retrieve Tx character
-
-        ld hl, ASCI0TxBufUsed
-        di
-        inc (hl)                    ; atomic increment of Tx count
-        ld hl, (ASCI0TxInPtr)       ; get the pointer to where we poke
-        ei
-        ld (hl), a                  ; write the Tx byte to the ASCI0TxInPtr   
-
-        inc l                       ; move the Tx pointer low byte along, 0xFF rollover
-        ld (ASCI0TxInPtr), hl       ; write where the next byte should be poked
-
-        pop hl                      ; recover HL
-
-        in0 a, (STAT0)              ; load the ASCI0 status register
-        and ASCI_TIE                ; test whether ASCI0 interrupt is set
-        ret nz                      ; if so then just return
-
-        di                          ; critical section begin
-        in0 a, (STAT0)              ; get the ASCI status register again
-        or ASCI_TIE                 ; mask in (enable) the Tx Interrupt
-        out0 (STAT0), a             ; set the ASCI status register
-        ei                          ; critical section end
-        ret
-
-;------------------------------------------------------------------------------
-TX0_PRINT:
-        LD      A,(HL)              ; Get a byte
-        OR      A                   ; Is it $00 ?
-        RET     Z                   ; Then RETurn on terminator
-        CALL    TX0                 ; Print it
-        INC     HL                  ; Next byte
-        JR      TX0_PRINT           ; Continue until $00
-
-;------------------------------------------------------------------------------
+RESET1:
+        in0     a, (STAT0)              ; get the ASCI0 status register
+        and     ASCI_TDRE               ; mask out (disable) the Tx Interrupt
+        jr      z,RESET1
+        ld	a,'A'				; move byte into A
+	out0	(TDR0),a			; send byte to ASC0
+	jp	RESET1				; do forever

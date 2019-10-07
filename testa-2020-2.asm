@@ -543,147 +543,125 @@ DEFC    ASCI1TxBuf      =   ASCI1RxBuf+ASCI1_RX_BUFSIZE
 
 DEFC    APUCMDBuf       =   ASCI1TxBuf+ASCI1_TX_BUFSIZE
 DEFC    APUPTRBuf       =   APUCMDBuf+APU_CMD_BUFSIZE
-
-;------------------------------------------------------------------------------
-; RST 00 - RESET / TRAP
-                DEFS    0x0000 - ASMPC  ; ORG     0000H                     ; Disable interrupts
-                JP      RESET            ; Initialize Hardware and go
-
-;------------------------------------------------------------------------------
-; RST 08
-                DEFS    0x0008 - ASMPC  ; ORG     0008H
-                JP      RESET
-
-;------------------------------------------------------------------------------
-; RST 10
-                DEFS    0x0010 - ASMPC  ; ORG     0010H
-                JP      RESET
-
-;------------------------------------------------------------------------------
-; RST 18
-                DEFS    0x0018 - ASMPC  ; ORG     0018H
-                JP      RESET
-
-;------------------------------------------------------------------------------
-; RST 20
-                DEFS    0x0020 - ASMPC  ; ORG     0020H
-                JP      RESET
-
-;------------------------------------------------------------------------------
-; RST 28
-                DEFS    0x0028 - ASMPC  ; ORG     0028H
-                JP      RESET
-
-;------------------------------------------------------------------------------
-; RST 30
-                DEFS    0x0030 - ASMPC  ; ORG     0030H
-                JP      RESET
-
-;------------------------------------------------------------------------------
-; RST 38 - INTERRUPT VECTOR INT0 [ with IM 1 ]
-
-                DEFS    0x0038 - ASMPC  ; ORG     0038H
-                JP      RESET
+defc __CPU_CLOCK = 6144000
+defc __CPU_TIMER_SCALE = 20
+asci0TxLock:    defb    $FE             ; mutex for Tx0
+asci0RxLock:    defb    $FE    
+asci1RxLock:    defb    $FE             ; mutex for Rx1
+asci1TxLock:    defb    $FE             ; mutex for Tx1
 
 		ORG		0100h			; start of program
 RESET:
 ;======MAIN======
 
-            DI                      ; Disable interrupts
-            LD      A,Z180_VECTOR_BASE%$100
-            OUT0    (IL),A          ; Set interrupt vector address low byte (IL)
+    di
 
- ;           IM      1               ; Interrupt mode 1 for INT0
+    ld a,$80
+    out0 (IL),a
 
-            XOR     A               ; Zero Accumulator
+    xor     a               ; Zero Accumulator
 
-                                    ; Clear Refresh Control Reg (RCR)
-            OUT0    (RCR),A         ; DRAM Refresh Enable (0 Disabled)
+    out0	(DSTAT),a		; shut off DMA
+    out0	(CNTR),a		; shut off CSI/O
+                            ; Clear Refresh Control Reg (RCR)
+    out0    (RCR),a         ; DRAM Refresh Enable (0 Disabled)
 
-                                    ; Clear INT/TRAP Control Register (ITC)             
-            OUT0    (ITC),A         ; Disable all external interrupts.             
+                            ; Clear INT/TRAP Control Register (ITC)             
+    out0    (ITC),a         ; Disable all external interrupts.             
 
-                                    ; Set Operation Mode Control Reg (OMCR)
-            LD      A,0         ;OMCR_M1E      ; Enable M1 for single step, disable 64180 I/O _RD Mode
-            OUT0    (OMCR),A        ; X80 Mode (M1 Disabled, IOC Disabled)
+                            ; Set Operation Mode Control Reg (OMCR)
+    ld      a,OMCR_M1E      ; Enable M1 for single step, disable 64180 I/O _RD Mode
+    out0    (OMCR),a        ; X80 Mode (M1 Disabled, IOC Disabled)
 
-                                    ; Set internal clock = crystal x 2 = 36.864MHz
-                                    ; if using ZS8180 or Z80182 at High-Speed
-            LD      A,CMR_X1        ; Set Hi-Speed flag
-            OUT0    (CMR),A         ; CPU Clock Multiplier Reg (CMR)
+                            ; Set PHI = CCR x 2 = 36.864MHz
+                            ; if using ZS8180 or Z80182 at High-Speed
+    ld      a,CMR_X1        ; Set Hi-Speed flag
+    out0    (CMR),a         ; CPU Clock Multiplier Reg (CMR)
 
-                                    ; DMA/Wait Control Reg Set I/O Wait States
-            LD      A,DCNTL_IWI0
-            OUT0    (DCNTL),A       ; 0 Memory Wait & 2 I/O Wait
+                            ; Set CCR = crystal = 18.432MHz
+                            ; if using ZS8180 or Z80182 at High-Speed
+    ld      a,CCR_XTAL_X2   ; Set Hi-Speed flag
+    out0    (CCR),a         ; CPU Control Reg (CCR)
 
-            LD      HL,Z80_VECTOR_PROTO ; Establish Z80 RST Vector Table
-            LD      DE,Z80_VECTOR_BASE
-            LD      BC,Z80_VECTOR_SIZE
-            LDIR
+                             ; we do 256 ticks per second
+    ld      hl,__CPU_CLOCK/__CPU_TIMER_SCALE/256-1 
+    out0    (RLDR0L),l
+    out0    (RLDR0H),h
+                            ; enable down counting and interrupts for PRT0
+    ld      a,TCR_TIE0|TCR_TDE0
+    out0    (TCR),a         ; using the driver/z180/system_tick.asm
 
-            LD      HL,Z180_VECTOR_PROTO ; Establish Z180 Vector Table
-            LD      DE,Z180_VECTOR_BASE
-            LD      BC,Z180_VECTOR_SIZE
-            LDIR
+                            ; DMA/Wait Control Reg Set I/O Wait States
+    ld      a,DCNTL_MWI0|DCNTL_IWI1
+    out0    (DCNTL),a       ; 1 Memory Wait & 3 I/O Wait
 
-             ; Set Logical RAM Addresses
-                            ; $8000-$FFFF RAM   CA1  -> $8.
-                            ; $0000-$7FFF Flash BANK -> $.0
+                            ; Set Logical RAM Addresses
+                            ; $F000-$FFFF RAM   CA1  -> $F.
+                            ; $C000-$EFFF RAM   BANK
+                            ; $0000-$BFFF Flash BANK -> $.0
 
-            LD      A,$80           ; Set New Common 1 / Bank Areas for RAM
-            OUT0    (CBAR),A
-                                    ; logical 8000h + 43000h gives physical 51000h
-		            	    ; user RAM area = 51000h to 58FFFh
-            LD      A,$43           ; Set Common 1 Base Physical $43000 -> $43
-            OUT0    (CBR),A
+    ld      a,$80           ; Set New Common 1 / Bank Areas for RAM
+    out0    (CBAR),a
 
-            LD      A,$00           ; Set Bank Base Physical $00000 -> $00
-            OUT0    (BBR),A
+    ld      a,$00           ; Set Common 1 Base Physical $0F000 -> $00
+    out0    (CBR),a
 
-                                    ; load the default ASCI configuration
-                                    ; BAUD = 115200 8n1
-                                    ; receive enabled
-                                    ; transmit enabled
-                                    ; receive interrupt enabled
-                                    ; transmit interrupt disabled
+    ld      a,$00           ; Set Bank Base Physical $00000 -> $00
+    out0    (BBR),a
 
-            LD      A,ASCI_RE|ASCI_TE|ASCI_8N1
-            OUT0    (CNTLA0),A      ; output to the ASCI0 control A reg
+   
 
-                                    ; PHI / PS / SS / DR = BAUD Rate
-                                    ; PHI = 6.144MHz
-                                    ; BAUD = 115200 = 6144000 / 10 / 1 / 16 
-                                    ; PS 0, SS_DIV_1 0, DR 0  
+    ; initialise the ASCI0
+                                ; load the default ASCI CRT configuration
+                                ; BAUD = 115200 8n1
+                                ; receive enabled
+                                ; transmit enabled
+                                ; receive interrupt enabled
+                                ; transmit interrupt disabled
 
-            XOR     A,CNTLB0_CTS|CNTLB0_SS_DIV_16              ; BAUD = 38400
-            OUT0    (CNTLB0),A      ; output to the ASCI0 control B reg
+    ld a,CNTLA0_RE|CNTLA0_TE|CNTLA0_MODE_8N1
+    out0 (CNTLA0),a             ; output to the ASCI0 control A reg
 
-            LD      A,ASCI_RIE      ; receive interrupt enabled
-            OUT0    (STAT0),A       ; output to the ASCI0 status reg
+                                ; PHI / PS / SS / DR = BAUD Rate
+                                ; PHI = 36.864MHz
+                                ; BAUD = 115200 = 36864000 / 10 / 2 / 16 
+                                ; PS 0, SS_DIV_2, DR 0
+    ld a,CNTLB0_SS_DIV_2
+    out0    (CNTLB0),a          ; output to the ASCI0 control B reg
 
-                                    ; we do 256 ticks per second
-            ld      hl, CPU_CLOCK/CPU_TIMER_SCALE/256-1
-            out0    (RLDR0L), l
-            out0    (RLDR0H), h
-                                    ; enable down counting and interrupts for PRT0
-            ld      a, TCR_TIE0|TCR_TDE0
-            out0    (TCR), a
+    ld a,STAT0_RIE              ; receive interrupt enabled
+    out0 (STAT0),a              ; output to the ASCI0 status reg
 
-            LD      SP,TEMPSTACK    ; Set up a temporary stack
+    ld hl,asci0TxLock           ; load the mutex lock address
+    ld (hl),$FE                 ; give mutex lock
+    ld hl,asci0RxLock           ; load the mutex lock address
+    ld (hl),$FE                 ; give mutex lock
 
-            LD      HL,ASCI0RxBuf   ; Initialise 0Rx Buffer
-            LD      (ASCI0RxInPtr),HL
-            LD      (ASCI0RxOutPtr),HL
+    ; initialise the ASCI1
+                                ; load the default ASCI TTY configuration
+                                ; BAUD = 9600 8n2
+                                ; receive enabled
+                                ; transmit enabled
+                                ; receive interrupt enabled
+                                ; transmit interrupt disabled
 
-            LD      HL,ASCI0TxBuf   ; Initialise 0Tx Buffer
-            LD      (ASCI0TxInPtr),HL
-            LD      (ASCI0TxOutPtr),HL              
+    ld a,CNTLA1_RE|CNTLA1_TE|CNTLA1_MODE_8N2
+    out0 (CNTLA1),a             ; output to the ASCI1 control A reg
 
-            XOR     A               ; 0 the ASCI0 Tx & Rx Buffer Counts
-            LD      (ASCI0RxBufUsed),A
-            LD      (ASCI0TxBufUsed),A
+                                ; PHI / PS / SS / DR = BAUD Rate
+                                ; PHI = 36.864MHz
+                                ; BAUD = 9600 = 36864000 / 30 / 2 / 64
+                                ; PS 1, SS_DIV_2, DR 1
+    ld a,CNTLB1_PS|CNTLB1_DR|CNTLB1_SS_DIV_2
+    out0    (CNTLB1),a          ; output to the ASCI1 control B reg
 
-            ;EI                      ; enable interrupts
+    ld a,STAT1_RIE              ; receive interrupt enabled
+    out0 (STAT1),a              ; output to the ASCI1 status reg
+
+    ld hl,asci1TxLock           ; load the mutex lock address
+    ld (hl),$FE                 ; give mutex lock
+    ld hl,asci1RxLock           ; load the mutex lock address
+    ld (hl),$FE                 ; give mutex lock
 
 RESET1:
         in0     a, (STAT0)              ; get the ASCI0 status register

@@ -4,8 +4,6 @@
 ; DEFINES SECTION
 ;
 
-DEFC    CPU_CLOCK       =   6144000
-
 DEFC    ROMSTART        =   $0000   ; Bottom of Common 0 FLASH
 DEFC    ROMSTOP         =   $7FFF   ; Top of Common 0 FLASH
 
@@ -31,7 +29,7 @@ DEFC    RAMSTART        =   RAMSTART_CA0
 DEFC    RAMSTOP         =   RAMSTOP_CA1
 
 DEFC    STACKTOP        =   $BFFD   ; start of a global stack (any pushes pre-decrement)
-
+DEFC    kZ180Base   =   $C0
 ;   RAM Vector Address for Z80 RST Table, and for Z180 Vector Table
 DEFC    Z80_VECTOR_BASE =   RAMSTART_CA0
 
@@ -207,6 +205,7 @@ DEFC    ICR             =       Z180_IO_BASE+$3F    ; I/O Control Reg
 
 ;   ASCI Control Reg A (CNTLAn)
 
+DEFC    ASCI0           =       $12
 DEFC    ASCI_MPE        =       $80     ; Multi Processor Enable
 DEFC    ASCI_RE         =       $40     ; Receive Enable
 DEFC    ASCI_TE         =       $20     ; Transmit Enable
@@ -323,6 +322,7 @@ defc CNTR_SS_DIV_20 = 0x00
 ;   ASCI Control Reg B (CNTLBn)
                                         ; BAUD Rate = PHI / PS / SS / DR
 
+DEFC    ASCI1           =       $13
 DEFC    ASCI_MPBT       =       $80     ; Multi Processor Bit Transmit
 DEFC    ASCI_MP         =       $40     ; Multi Processor
 DEFC    ASCI_PS         =       $20     ; Prescale PHI by 10 (PS 0) or 30 (PS 1)
@@ -347,7 +347,7 @@ DEFC    ASCI_FE         =       $10     ; Framing Error (Received Byte)
 DEFC    ASCI_RIE        =       $08     ; Receive Interrupt Enabled
 DEFC    ASCI_DCD0       =       $04     ; _DCD0 Data Carrier Detect USART0
 DEFC    ASCI_CTS1       =       $04     ; _CTS1 Clear To Send USART1
-DEFC    ASCI_TDRE       =       $02     ; Transmit Data Register Empty
+DEFC    ASCI_TDRE       =       $01     ; Transmit Data Register Empty
 DEFC    ASCI_TIE        =       $01     ; Transmit Interrupt Enabled
 
 ;   Programmable Reload Timer (TCR)
@@ -369,7 +369,8 @@ DEFC    CMR_LN_XTAL     =       $40     ; Low Noise Crystal
 
 ;   CPU Control Reg (CCR) (Z8S180 & higher Only)
 
-DEFC    CCR_XTAL_X2     =       $80     ; PHI = XTAL Mode
+DEFC    CCR_XTAL_DIV1     =       $80     ; PHI = XTAL Mode
+DEFC    CCR_XTAL_DIV2     =       $00     ; PHI = XTAL Mode
 DEFC    CCR_STANDBY     =       $40     ; STANDBY after SLEEP
 DEFC    CCR_BREXT       =       $20     ; Exit STANDBY on BUSREQ
 DEFC    CCR_LNPHI       =       $10     ; Low Noise PHI (30% Drive)
@@ -543,130 +544,207 @@ DEFC    ASCI1TxBuf      =   ASCI1RxBuf+ASCI1_RX_BUFSIZE
 
 DEFC    APUCMDBuf       =   ASCI1TxBuf+ASCI1_TX_BUFSIZE
 DEFC    APUPTRBuf       =   APUCMDBuf+APU_CMD_BUFSIZE
-defc __CPU_CLOCK = 6144000
+defc __CPU_CLOCK = 18432000
 defc __CPU_TIMER_SCALE = 20
+DEFC kData  = 0xFC00         ;Typically 0xFC00 (to 0xFFFF)
+DEFC kSPUsr = kData+0x00C0 
 asci0TxLock:    defb    $FE             ; mutex for Tx0
 asci0RxLock:    defb    $FE    
 asci1RxLock:    defb    $FE             ; mutex for Rx1
 asci1TxLock:    defb    $FE             ; mutex for Tx1
 
-		ORG		0100h			; start of program
+		ORG		0000h			; start of program
 RESET:
 ;======MAIN======
 
     di
+    LD   HL,kSPUsr      ;Get top of user stack
+    LD   SP,HL
+    xor     a               ; Zero Accumulator
 
     ld a,$80
     out0 (IL),a
+    
+    ld      a,kZ180Base
+	out0	(ICR),a			; set up I/O control
+    
+    
 
-    xor     a               ; Zero Accumulator
+; Initialise Memory Management Unit (MMU)
+;
+; Logical (64k) memory is divided into three areas:
+;   Common(0)  This is always 0x0000
+;   Bank       Starts at BA * 0x1000
+;   Common     Starts at CA * 0x1000
+;
+; Physical (1M) memory is determined as follows:
+;    Common(0)  This always starts at 0x00000
+;    Bank       Starts at (CBR+CA) * 0x1000
+;    Common     Starts at (BBR+BA) * 0x1000
+;
+; Registers:
+;    Bank Base Register        (BBR)  = 0x00 to 0xFF
+;    Common Base Register      (CBR)  = 0x00 to 0xFF
+;    Common/Bank Area Register (CBAR) = CA.BA (nibbles)
+;
+; Following a hardware reset the MMU registers are:
+;    BBR=0x00, CBR = 0x00, CBAR = 0xFF (= CA.BA)
+; Thus the logical (64k) memory to physical (1M) memory mapping is:
+;    Common(0) 0x0000 to 0xEFFF -> 0x00000 to 0x0EFFF (ROM)
+;    Bank      0xF000 to 0xF000 -> 0x0F000 to 0x0F000 (RAM)
+;    Common(1) 0xF000 to 0xFFFF -> 0x0F000 to 0x0FFFF (RAM)
+;
+; Initialise logical (64k) memory to physical (1M) memory mapping
+; such that the bottom 32k bytes of logical memory is the bottom 32k
+; bytes of the physical Flash ROM, and the top 32k bytes of logical 
+; memory is the top 32k bytes of the physical RAM.
+;    Common(0) 0x0000 to 0x0000 -> 0x00000 to 0x00000 (ROM)
+;    Bank      0x0000 to 0x7FFF -> 0x00000 to 0x07FFF (ROM)
+;    Common(1) 0x8000 to 0xFFFF -> 0xF8000 to 0xFFFFF (RAM)
+; 
+; This is achieved by setting the registers as follows:
+;    CBAR = CA.BA = 0x8.0x0 = 0x80
+;    BBR  = (physical address)/0x1000 - BA = 0x00 - 0x0 = 0x00
+;    CBR  = (physical address)/0x1000 - BA = 0xF8 - 0x8 = 0xF0
+            LD   A, 0x00        ;Physical memory base address:
+            OUT0 (BBR), A       ;  Bank Base = 0x00000
+            LD   A, 0xF0        ;Physical memory base address:
+            OUT0 (CBR), A       ;  Common Base = 0xF8000
+            LD   A, 0x80        ;Logical memory base addresses:
+            OUT0 (CBAR), A      ;  Bank = 0x0000, Common = 0x8000
 
-    out0	(DSTAT),a		; shut off DMA
-    out0	(CNTR),a		; shut off CSI/O
-                            ; Clear Refresh Control Reg (RCR)
-    out0    (RCR),a         ; DRAM Refresh Enable (0 Disabled)
 
-                            ; Clear INT/TRAP Control Register (ITC)             
-    out0    (ITC),a         ; Disable all external interrupts.             
+    ; ALREADY DONE DURING SELF TEST
+; Position Z180 internal I/O at 0xC0 to 0xFF
+            ;LD   A,0xC0        ;Start of Z180 internal I/O
+            ;OUT0 (ICR),A
 
-                            ; Set Operation Mode Control Reg (OMCR)
-    ld      a,OMCR_M1E      ; Enable M1 for single step, disable 64180 I/O _RD Mode
-    out0    (OMCR),a        ; X80 Mode (M1 Disabled, IOC Disabled)
+; ALREADY DONE DURING SELF TEST
+; Initialise Memory Management Unit (MMU)
+; This maps logical (64k) memory to physical (1M) memory
+; Common(0) 0x0000 to 0x7FFF -> 0x00000 to 0x07FFF
+; Bank      0x8000 to 0xFFFF -> 0x80000 to 0xFFFFF
+; Common(1) 0x8000 to 0xFFFF -> 0x80000 to 0xFFFFF
+            ;LD   A,0x80        ;Physical address = A x 0x1000
+            ;OUT0 (BBR), A      ;Bank Base Register = 0x80
+            ;OUT0 (CBR), A      ;Common(1) Base Register = 0x80
+; Both Bank and Common(1) start at logical address 0x8000
+            ;LD   A,0x88        ;Logical address = Nibble x 0x1000
+            ;OUT0 (CBAR), A     ;Both start at 0x8000
 
-                            ; Set PHI = CCR x 2 = 36.864MHz
-                            ; if using ZS8180 or Z80182 at High-Speed
-    ld      a,CMR_X1        ; Set Hi-Speed flag
-    out0    (CMR),a         ; CPU Clock Multiplier Reg (CMR)
+; Initialise Z180 serial port 0
+;
+; Baud rate = PHI/(baud rate divider x prescaler x sampling divider)
+;   PHI = CPU clock input / 1 = 18.432/1 MHz = 18.432 MHz
+;   Baud rate divider (1,2,4,8,16,32,or 64) = 1
+;   Prescaler (10 or 30) = 10
+;   Sampling divide rate (16 or 64) = 16
+; Baud rate = 18,432,00 / ( 1 x 10 x 16) = 18432000 / 160 = 115200 baud
+;
+; Control Register A for channel 0 (CNTLA0)
+;   Bit 7 = 0    Multiprocessor Mode Enable (MPE)
+;   Bit 6 = 1    Receiver Enable (RE)
+;   Bit 5 = 1    Transmitter Enable (TE)
+;   Bit 4 = 0    Request to Send Output (RTS0) (0 = Low, 1 = High)
+;   Bit 3 = 0    Multiprocessor Bit Receive/Error Flag (MPBR) (0 = Reset)
+;   Bit 2 = 1    Data Format (0 = 7-bit, 1 = 8-bit)
+;   Bit 1 = 0    Parity (0 = No Parity, 1 = Parity Enabled)
+;   Bit 0 = 0    Stop Bits (0 = 1 Stop Bit, 1 = 2 Stop Bits)
+            LD   A, 0b01100100
+            OUT0 (CNTLA0), A
+; And the same for channel 1 
+            OUT0 (CNTLA1), A
 
-                            ; Set CCR = crystal = 18.432MHz
-                            ; if using ZS8180 or Z80182 at High-Speed
-    ld      a,CCR_XTAL_X2   ; Set Hi-Speed flag
-    out0    (CCR),a         ; CPU Control Reg (CCR)
+; Control Register B for channel 0 (CNTLB0)
+;   Bit 7 = 0    Multiprocessor Bit Transmit (MPBT)
+;   Bit 6 = 0    Multiprocessor Mode (MP)
+;   Bit 5 = 0    Clear to Send/Prescale (CTC/PS) (0 = PHI/10, 1 = PHI/30)
+;   Bit 4 = 0    Parity Even Odd (PEO) (0 = Even, 1 = Odd)
+;   Bit 3 = 0    Divide Ratio (DR) (0 = divide 16, 1 = divide 64)
+;   Bit 2 = 000  Source/Speed Select (SS2-SS0)
+;    to 0        (0 = /1, 1 = /2, .. 6 = /64, 7 = External clock)
+            LD   A, 0b00000000
+            OUT0 (CNTLB0), A
+; And the same for channel 1 
+            OUT0 (CNTLB1), A
 
-                             ; we do 256 ticks per second
-    ld      hl,__CPU_CLOCK/__CPU_TIMER_SCALE/256-1 
-    out0    (RLDR0L),l
-    out0    (RLDR0H),h
-                            ; enable down counting and interrupts for PRT0
-    ld      a,TCR_TIE0|TCR_TDE0
-    out0    (TCR),a         ; using the driver/z180/system_tick.asm
+; Extension Control Register (ASCI0) [Z8S180/L180-class processors only)
+;   Bit 7 = 0    Receive Interrupt Inhibit (0 = Inhibited, 1 = Enabled)
+;   Bit 6 = 1    DCD0 Disable (0 = DCD0 Auto-enable Rx, 1 = Advisory)
+;   Bit 5 = 1    CTS0 Disable (0 = CTS0 Auto-enable Tx, 1 = Advisory)
+;   Bit 4 = 0    X1 Bit Clock (0 = CKA0/16 or 64, 1 = CKA0 is bit clock)
+;   Bit 3 = 0    BRG0 Mode (0 = As S180, 1 = Enable 16-BRG counter)
+;   Bit 2 = 0    Break Feature (0 = Enabled, 1 = Disabled)
+;   Bit 1 = 0    Break Detect (0 = On, 1 = Off)
+;   Bit 0 = 0    Send Break (0 = Normal transmit, 1 = Drive TXA Low)
+            LD   A, 0b01100000
+            OUT0 (ASCI0), A
+; And the same for channel 1 
+            OUT0 (ASCI1), A
 
-                            ; DMA/Wait Control Reg Set I/O Wait States
-    ld      a,DCNTL_MWI0|DCNTL_IWI1
-    out0    (DCNTL),a       ; 1 Memory Wait & 3 I/O Wait
+; Refresh Control Register (RCR)
+;   Bit 7 = 0    Refresh Enable (REFE) (0 = Disabled, 1 = Enabled)
+;   Bit 6 = 0    Refresh Wait (REFW) (0 = 2 clocksm 3 = 3 clocks)
+;   Bit 1-0 = 0  Cycle Interval (CYC1-0) 
+            LD   A, 0b00000000
+            OUT0 (RCR), A       ;Turn off memory refresh
 
-                            ; Set Logical RAM Addresses
-                            ; $F000-$FFFF RAM   CA1  -> $F.
-                            ; $C000-$EFFF RAM   BANK
-                            ; $0000-$BFFF Flash BANK -> $.0
+; DMA/WAIT Control Register (DCNTL)
+;   Bit 7-6 = 00 Memory Wait Insertion (MWI1-0) (0 to 3 wait states)
+;   Bit 5-4 = 11 I/O Wait Insertion (IWI1-0) (0 to 3 wait states) 
+;   Bit 3 = 0    DMA Request Sense ch 1 (DMS1) (0 = Level, 1 = Edge)
+;   Bit 2 = 0    DMA Request Sense ch 0 (DMS0) (0 = Level, 1 = Edge)
+;   Bit 1 = 0    DMA Channel 1 Mode (DIM1) (0 = Mem to I/O, 1 = I/O to Mem)
+;   Bit 0 = 0    DMA Channel 0 Mode (DIM0) (0 = MARI+1, 1 = MARI-1)
+;   Bit 3-2 = 00 DMA Request Sense (DMS1-0) (0 = Level, 1 = Edge)
+            LD   A, 0b00110000
+            OUT0 (DCNTL), A     ;Maximum wait states for I/O and Memory
 
-    ld      a,$80           ; Set New Common 1 / Bank Areas for RAM
-    out0    (CBAR),a
+; Operating Mode Control Register (OMCR)
+;   Bit 7 = 0    M1 Enable (M1E) (1 = Default, 0 = Z80 compatibility mode)
+;   Bit 6 = 0    M1 Temporary Enable (M1TE) (1 = Default, 0 = Z80 mode)
+;   Bit 5 = 0    I/O Compatibility (IOC) (1 = Default, 0 = Z80 mode)
+;   Bits 4-0 = 0 Reserved
+            LD   A, 0b00000000
+            OUT0 (OMCR), A      ;Select Z80 compatibility mode
 
-    ld      a,$00           ; Set Common 1 Base Physical $0F000 -> $00
-    out0    (CBR),a
+; CPU Control Register (CCR)
+;   Bit 7 = 1    CPU Clock Divide (0 = Divide 2, 1 = Divide 1)
+;   Bit 6+3 = 0  Standy/Idle Mode (00 = No Standby, 01 = ...)
+;   Bit 5 = 0    Bus Request Exit (0 = Ignore in standby, 1 = Exit on BR)
+;   Bit 4 = 0    PHI Clock Drive (0 = Standard, 1 = 33%)
+;   Bit 3+6 = 0  Standy/Idle Mode (00 = No Standby, 01 = ...)
+;   Bit 2 = 0    External I/O Drive (0 = Standard, 1 = 33%)
+;   Bit 1 = 0    Control Signal Drive (0 = Standard, 1 = 33%)
+;   Bit 0 = 0    Address and Data Drive (0 = Standard, 1 = 33%)
+            LD   A, 0b10000000
+            OUT0 (CCR), A
 
-    ld      a,$00           ; Set Bank Base Physical $00000 -> $00
-    out0    (BBR),a
+; Set reload registers for 1ms timer
+; Timer input clock is PHI/20 = 18,432,000MHz/20 = 921.6kHz
+; Relead time to give 1ms timer is 921.6 (0x039A when rounded up)
+            LD   A,0x9A
+            OUT0 (RLDR0L),A
+            LD   A,0x03
+            OUT0 (RLDR0H),A
 
-   
+; Timer Control Register
+;   Bit 7 = 0    Timer 1 interrupt flag
+;   Bit 6 = 0    Timer 0 interrupt flag
+;   Bit 5 = 0    Timer 1 interrupt enable
+;   Bit 4 = 0    Timer 0 interrupt enable
+;   Bit 3-2 = 00 Inhibit timer output on A18/Tout
+;   Bit 1 = 0    Timer 1 down count enable
+;   Bit 0 = 1    Timer 0 down count enable
+            LD   A,0b00000001
+            OUT0 (TCR),A
 
-    ; initialise the ASCI0
-                                ; load the default ASCI CRT configuration
-                                ; BAUD = 115200 8n1
-                                ; receive enabled
-                                ; transmit enabled
-                                ; receive interrupt enabled
-                                ; transmit interrupt disabled
-
-    ld a,CNTLA0_RE|CNTLA0_TE|CNTLA0_MODE_8N1
-    out0 (CNTLA0),a             ; output to the ASCI0 control A reg
-
-                                ; PHI / PS / SS / DR = BAUD Rate
-                                ; PHI = 36.864MHz
-                                ; BAUD = 115200 = 36864000 / 10 / 2 / 16 
-                                ; PS 0, SS_DIV_2, DR 0
-    ld a,CNTLB0_SS_DIV_2
-    out0    (CNTLB0),a          ; output to the ASCI0 control B reg
-
-    ld a,STAT0_RIE              ; receive interrupt enabled
-    out0 (STAT0),a              ; output to the ASCI0 status reg
-
-    ld hl,asci0TxLock           ; load the mutex lock address
-    ld (hl),$FE                 ; give mutex lock
-    ld hl,asci0RxLock           ; load the mutex lock address
-    ld (hl),$FE                 ; give mutex lock
-
-    ; initialise the ASCI1
-                                ; load the default ASCI TTY configuration
-                                ; BAUD = 9600 8n2
-                                ; receive enabled
-                                ; transmit enabled
-                                ; receive interrupt enabled
-                                ; transmit interrupt disabled
-
-    ld a,CNTLA1_RE|CNTLA1_TE|CNTLA1_MODE_8N2
-    out0 (CNTLA1),a             ; output to the ASCI1 control A reg
-
-                                ; PHI / PS / SS / DR = BAUD Rate
-                                ; PHI = 36.864MHz
-                                ; BAUD = 9600 = 36864000 / 30 / 2 / 64
-                                ; PS 1, SS_DIV_2, DR 1
-    ld a,CNTLB1_PS|CNTLB1_DR|CNTLB1_SS_DIV_2
-    out0    (CNTLB1),a          ; output to the ASCI1 control B reg
-
-    ld a,STAT1_RIE              ; receive interrupt enabled
-    out0 (STAT1),a              ; output to the ASCI1 status reg
-
-    ld hl,asci1TxLock           ; load the mutex lock address
-    ld (hl),$FE                 ; give mutex lock
-    ld hl,asci1RxLock           ; load the mutex lock address
-    ld (hl),$FE                 ; give mutex lock
-
+    
 RESET1:
-        in0     a, (STAT0)              ; get the ASCI0 status register
-        and     ASCI_TDRE               ; mask out (disable) the Tx Interrupt
-        jr      z,RESET1
-        ld	a,'A'				; move byte into A
-	out0	(TDR0),a			; send byte to ASC0
-	jp	RESET1				; do forever
+        IN0  B,(STAT0)      ;Read serial port status register
+        BIT  ASCI_TDRE,B      ;Transmit register empty?
+        RET  Z              ;Return Z as character not output
+        LD		A,$41				; move byte into A
+        OUT0 (TDR0), A      ;Write byte to serial port
+        OR   0xFF           ;Return success A=0xFF and NZ flagged
+	    jp	RESET1				; do forever
